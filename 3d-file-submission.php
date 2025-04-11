@@ -1,12 +1,12 @@
 <?php 
 /*
-Plugin Name: 3D File Submission
-Description: Super Skibidi eye of rah
-Version: 6.9
-Author: Kevin, Milos en Kasper
+Plugin Name: 3D File Submission.
+Description: MITM solution for 3D file submission.
+Version: 1.0
+Author: Kevin, Milos en Kasper.
 */
 
-defined('ABSPATH') or die('feinfeinfein');
+defined('ABSPATH') or die('died');
 
 function register_custom_post_types() {
     register_post_type('3d_submission',
