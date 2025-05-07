@@ -1,12 +1,12 @@
 <?php 
 /*
-Plugin Name: 3D File Submission.
-Description: MITM solution for 3D file submission.
-Version: 1.0
-Author: Kevin, Milos en Kasper.
+Plugin Name: 3D File Submission
+Description: Super Skibidi eye of rah
+Version: 6.9
+Author: Kevin, Milos en Kasper
 */
 
-defined('ABSPATH') or die('died');
+defined('ABSPATH') or die('feinfeinfein');
 
 function register_custom_post_types() {
     register_post_type('3d_submission',
@@ -2060,7 +2060,6 @@ function send_pending_submissions_notification() {
         ]
     ]));
     
-    // If there are no pending submissions, no need to send an email
     if ($pending_count <= 0) {
         return;
     }
@@ -2079,33 +2078,80 @@ function send_pending_submissions_notification() {
         return;
     }
 
+    // Get pending submissions details
+    $pending_submissions = get_posts([
+        'post_type' => '3d_submission',
+        'posts_per_page' => -1,
+        'meta_query' => [
+            [
+                'key' => 'approval_status',
+                'value' => 'inbehandeling',
+                'compare' => '='
+            ]
+        ]
+    ]);
+
     // Prepare email content
-    $subject = sprintf(
-        '%d 3D print %s wachten op review',
-        $pending_count,
-        $pending_count === 1 ? 'aanvraag' : 'aanvragen'
-    );
+    $subject = '3D Print Service - Aanvragen in wachtrij';
     
     $site_url = get_site_url();
     $admin_url = admin_url('edit.php?post_type=3d_submission&approval_status=inbehandeling');
     
-    $message = '<p>Beste beheerder,</p>';
-    $message .= '<p>Er ' . ($pending_count === 1 ? 'is' : 'zijn') . ' momenteel <strong>' . $pending_count . '</strong> ';
+    $message = '<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta name="x-apple-disable-message-reformatting" />
+    <meta name="format-detection" content="telephone=no" />
+</head>
+<body>
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <p>Beste beheerder,</p>
+        
+        <p>Er ' . ($pending_count === 1 ? 'is' : 'zijn') . ' momenteel <strong>' . $pending_count . '</strong> ';
     $message .= '3D print ' . ($pending_count === 1 ? 'aanvraag' : 'aanvragen') . ' die op review ';
     $message .= ($pending_count === 1 ? 'wacht' : 'wachten') . '.</p>';
+
+    // Add details for each pending submission
+    $message .= '<h2>Aanvragen in wachtrij:</h2>';
+    foreach ($pending_submissions as $submission) {
+        $submission_url = get_edit_post_link($submission->ID, '');
+        $submission_date = get_the_date('j F Y', $submission->ID);
+        
+        $message .= '<div style="margin-bottom: 15px; padding: 10px; border: 1px solid #ddd; background-color: #f9f9f9;">';
+        $message .= '<strong>' . esc_html($submission->post_title) . '</strong><br>';
+        $message .= 'Ingediend op: ' . $submission_date . '<br>';
+        $message .= '<a href="' . esc_url($submission_url) . '" style="color: #0073aa; text-decoration: none;">Bekijk aanvraag</a>';
+        $message .= '</div>';
+    }
     
-    $message .= '<p><a href="' . esc_url($admin_url) . '">Bekijk de wachtende aanvragen</a></p>';
+    $message .= '<p><a href="' . esc_url($admin_url) . '" style="display: inline-block; padding: 10px 20px; background-color: #0073aa; color: #ffffff; text-decoration: none; border-radius: 3px;">Bekijk alle aanvragen in de wachtrij</a></p>';
     
-    $message .= '<hr>';
-    $message .= '<p><small>Dit is een automatische melding van de 3D Print Service op ' . get_bloginfo('name') . '</small></p>';
+    $message .= '<hr style="border: 0; border-top: 1px solid #ddd; margin: 20px 0;">';
+    $message .= '<p style="color: #666; font-size: 12px;">Dit is een automatische melding van de 3D Print Service op ' . get_bloginfo('name') . '</p>';
+    $message .= '</div></body></html>';
     
-    // Send email
+    // Send email with headers to prevent tracking
     $headers = [
         'Content-Type: text/html; charset=UTF-8',
-        'From: 3D Print Service <no-reply@' . parse_url($site_url, PHP_URL_HOST) . '>'
+        'From: 3D Print Service <no-reply@' . parse_url($site_url, PHP_URL_HOST) . '>',
+        'X-Mailer: PHP/' . phpversion(),
+        'X-No-Track: true',
+        'X-SMTPAPI: {"filters":{"clicktrack":{"settings":{"enable":0}},"opentrack":{"settings":{"enable":0}}}}',
+        'List-Unsubscribe: <mailto:no-reply@' . parse_url($site_url, PHP_URL_HOST) . '>'
     ];
     
+    // Force WordPress to use PHP mail instead of any other mail handler
+    add_filter('pre_wp_mail', function($null, $atts) use ($message, $headers) {
+        $atts['message'] = $message;
+        $atts['headers'] = $headers;
+        return $atts;
+    }, 10, 2);
+
     wp_mail($admin_emails, $subject, $message, $headers);
+
+    // Remove the filter after sending
+    remove_filter('pre_wp_mail', function(){}, 10);
 }
 
 // Register the hook for the notification
