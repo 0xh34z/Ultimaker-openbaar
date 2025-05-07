@@ -1,8 +1,8 @@
 <?php 
 /*
 Plugin Name: 3D File Submission
-Description: Super Skibidi eye of rah
-Version: 6.9
+Description: MITM sulus 3D file submission plugin for Ultimaker printers.
+Version: 1.0
 Author: Kevin, Milos en Kasper
 */
 
@@ -687,6 +687,10 @@ function save_submission_data($post_id) {
     $new_status = sanitize_text_field($_POST['approval_status']);
     $old_status = get_post_meta($post_id, 'approval_status', true);
 
+    // Store whether we're approving the submission
+    $approving_submission = ($new_status === 'goedgekeurd' && $old_status !== 'goedgekeurd');
+
+    // Handle various status updates
     if ($new_status === 'afgewezen') {
         $rejection_reason = isset($_POST['rejection_reason']) ? trim($_POST['rejection_reason']) : '';
         if (empty($rejection_reason)) {
@@ -715,67 +719,107 @@ function save_submission_data($post_id) {
         update_post_meta($post_id, 'approval_status', $new_status);
         delete_post_meta($post_id, 'failure_reason');
     } else {
+        // This handles goedgekeurd and other statuses
         update_post_meta($post_id, 'approval_status', $new_status);
         delete_post_meta($post_id, 'rejection_reason');
     }
 
+    // Send notification if status changed
     if ($new_status !== $old_status) {
         send_approval_notification($post_id, $old_status, $new_status);
     }
-    if ($new_status === 'goedgekeurd') {
-        send_gcode_to_printer($post_id);
+    
+    // Only try to send to printer if we're approving
+    if ($approving_submission) {
+        $print_result = send_gcode_to_printer($post_id);
+        
+        // Add feedback about the print job submission
+        if (!$print_result) {
+            add_filter('redirect_post_location', function($location) {
+                return add_query_arg('3d_error', 'print_job_failed', $location);
+            });
+        } else {
+            add_filter('redirect_post_location', function($location) {
+                return add_query_arg('print_success', '1', $location);
+            });
+        }
     }
 }
 
 add_action('save_post', 'save_submission_data');
-function admin_notice_rejection_reason() {
-    if (!isset($_GET['3d_error'])) return;
 
-    $error_type = sanitize_text_field($_GET['3d_error']);
-    $messages = [
-        'rejection_reason_required' => [
-            'type' => 'error',
-            'title' => 'Afwijzing onvolledig',
-            'content' => 'Bij het afwijzen van een inzending is een afwijzingsreden vereist.'
-        ],
-        'failure_reason_required' => [
-            'type' => 'error',
-            'title' => 'Mislukking registratie onvolledig',
-            'content' => 'Bij het markeren als gefaald is een reden voor de mislukking vereist.'
-        ],
-        'invalid_status_change' => [
-            'type' => 'warning',
-            'title' => 'Ongeldige statuswijziging',
-            'content' => 'De geselecteerde statusovergang is niet toegestaan.'
-        ]
-    ];
+function admin_notice_submission_messages() {
+    if (!isset($_GET['3d_error']) && !isset($_GET['print_success'])) return;
 
-    if (array_key_exists($error_type, $messages)) {
-        $msg = $messages[$error_type];
+    if (isset($_GET['3d_error'])) {
+        $error_type = sanitize_text_field($_GET['3d_error']);
+        $messages = [
+            'rejection_reason_required' => [
+                'type' => 'error',
+                'title' => 'Afwijzing onvolledig',
+                'content' => 'Bij het afwijzen van een inzending is een afwijzingsreden vereist.'
+            ],
+            'failure_reason_required' => [
+                'type' => 'error',
+                'title' => 'Mislukking registratie onvolledig',
+                'content' => 'Bij het markeren als gefaald is een reden voor de mislukking vereist.'
+            ],
+            'invalid_status_change' => [
+                'type' => 'warning',
+                'title' => 'Ongeldige statuswijziging',
+                'content' => 'De geselecteerde statusovergang is niet toegestaan.'
+            ],
+            'print_job_failed' => [
+                'type' => 'error',
+                'title' => 'Print verzending mislukt',
+                'content' => 'De opdracht kon niet naar de printer verzonden worden. Controleer de error log voor details.'
+            ]
+        ];
+
+        if (array_key_exists($error_type, $messages)) {
+            $msg = $messages[$error_type];
+            ?>
+            <div class="notice notice-<?php echo esc_attr($msg['type']); ?> is-dismissible">
+                <div class="notice-content">
+                    <h3 style="margin: 0.5em 0;"><?php echo esc_html($msg['title']); ?></h3>
+                    <p><?php echo esc_html($msg['content']); ?></p>
+                    <?php if ($error_type === 'rejection_reason_required') : ?>
+                        <ul style="margin: 0.5em 0; list-style: disc inside;">
+                            <li>Geef een duidelijke technische reden op</li>
+                            <li>Verwijs eventueel naar specifieke richtlijnen</li>
+                            <li>Suggesties voor verbetering zijn optioneel</li>
+                        </ul>
+                    <?php elseif ($error_type === 'failure_reason_required') : ?>
+                        <ul style="margin: 0.5em 0; list-style: disc inside;">
+                            <li>Beschrijf wat er mis ging tijdens het printen</li>
+                            <li>Vermeld eventuele printerfoutcodes</li>
+                            <li>Geef aan of herbewerking nodig is</li>
+                        </ul>
+                    <?php elseif ($error_type === 'print_job_failed') : ?>
+                        <ul style="margin: 0.5em 0; list-style: disc inside;">
+                            <li>Controleer of de printer online is</li>
+                            <li>Verifieer de printer-instellingen (IP en API key)</li>
+                            <li>Bekijk het G-code bestand en probeer het opnieuw</li>
+                        </ul>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <?php
+        }
+    }
+    
+    if (isset($_GET['print_success'])) {
         ?>
-        <div class="notice notice-<?php echo esc_attr($msg['type']); ?> is-dismissible">
+        <div class="notice notice-success is-dismissible">
             <div class="notice-content">
-                <h3 style="margin: 0.5em 0;"><?php echo esc_html($msg['title']); ?></h3>
-                <p><?php echo esc_html($msg['content']); ?></p>
-                <?php if ($error_type === 'rejection_reason_required') : ?>
-                    <ul style="margin: 0.5em 0; list-style: disc inside;">
-                        <li>Geef een duidelijke technische reden op</li>
-                        <li>Verwijs eventueel naar specifieke richtlijnen</li>
-                        <li>Suggesties voor verbetering zijn optioneel</li>
-                    </ul>
-                <?php elseif ($error_type === 'failure_reason_required') : ?>
-                    <ul style="margin: 0.5em 0; list-style: disc inside;">
-                        <li>Beschrijf wat er mis ging tijdens het printen</li>
-                        <li>Vermeld eventuele printerfoutcodes</li>
-                        <li>Geef aan of herbewerking nodig is</li>
-                    </ul>
-                <?php endif; ?>
+                <h3 style="margin: 0.5em 0;">Print opdracht verzonden</h3>
+                <p>De print opdracht is succesvol naar de printer verzonden.</p>
             </div>
         </div>
         <?php
     }
 }
-add_action('admin_notices', 'admin_notice_rejection_reason');
+add_action('admin_notices', 'admin_notice_submission_messages');
 
 function submission_form_shortcode() {
     ob_start();
@@ -1836,116 +1880,273 @@ function printer_admin_styles() {
 }
 
 function send_gcode_to_printer($post_id) {
+    // Force refresh from database to get the latest status
+    wp_cache_flush();
+    
+    error_log("Starting print job submission for post ID: " . $post_id);
+    
     $approval_status = get_post_meta($post_id, 'approval_status', true);
     if ($approval_status !== 'goedgekeurd') {
+        error_log('Print job not sent: Status is not "goedgekeurd" but "' . $approval_status . '"');
         return false;
     }
 
+    // Get printer details
+    $printer_id = get_post_meta($post_id, 'selected_printer', true);
+    if (empty($printer_id)) {
+        error_log('Print job not sent: No printer selected for post ' . $post_id);
+        return false;
+    }
+    
+    $printer_ip = get_post_meta($printer_id, 'printer_ip', true);
+    $auth_id = get_post_meta($printer_id, 'printer_id', true);
+    $api_key = get_post_meta($printer_id, 'printer_api_key', true);
+
+    // Validate printer settings
+    if (empty($printer_ip) || empty($auth_id) || empty($api_key)) {
+        error_log("Print job not sent: Missing printer credentials - IP: {$printer_ip}, Auth ID: {$auth_id}");
+        return false;
+    }
+
+    // Get G-code file
     $gcode_url = get_post_meta($post_id, 'gcode_file_url', true);
     if (empty($gcode_url)) {
-        error_log('No G-code file for post ' . $post_id);
-        return false;
-    }
-
-    $printer_id = get_post_meta($post_id, 'selected_printer', true);
-    $printer_ip = get_post_meta($printer_id, 'printer_ip', true);
-    $api_key = get_post_meta($printer_id, 'printer_api_key', true);
-    
-    if (empty($printer_ip) || empty($api_key)) {
-        error_log('Printer configuration incomplete for post ' . $post_id);
+        error_log('Print job not sent: No G-code file URL found for post ' . $post_id);
         return false;
     }
 
     $upload_dir = wp_upload_dir();
     $file_path = str_replace($upload_dir['baseurl'], $upload_dir['basedir'], $gcode_url);
+    
     if (!file_exists($file_path)) {
-        error_log('G-code file not found: ' . $file_path);
+        error_log('Print job not sent: G-code file not found at: ' . $file_path);
         return false;
     }
 
-    $headers = [
-        'X-Api-Key' => $api_key,
-        'Content-Type' => 'application/json',
-        'Accept' => 'application/json'
-    ];
+    // Get submission details for job metadata
+    $post = get_post($post_id);
+    $user = get_user_by('id', $post->post_author);
+    $owner_name = $user ? $user->display_name : 'Unknown User';
+    $job_name = sanitize_title($post->post_title) . '-' . $post_id;
 
-    $upload_url = "http://{$printer_ip}/api/v1/files";
-    $file_content = file_get_contents($file_path);
+    // Initialize cURL
+    $curl = curl_init();
     
-    $upload_response = wp_remote_post($upload_url, [
-        'headers' => $headers,
-        'body' => $file_content,
-        'timeout' => 30
-    ]);
-
-    if (is_wp_error($upload_response)) {
-        error_log('Upload failed: ' . $upload_response->get_error_message());
-        return false;
-    }
-
-    $upload_status = wp_remote_retrieve_response_code($upload_response);
-    if ($upload_status !== 201) {
-        error_log('Upload failed. Status: ' . $upload_status . ' Response: ' . wp_remote_retrieve_body($upload_response));
-        return false;
-    }
-
-    $upload_data = json_decode(wp_remote_retrieve_body($upload_response), true);
-    $file_uuid = $upload_data['id'] ?? null;
-    if (!$file_uuid) {
-        error_log('Failed to get file UUID');
-        return false;
-    }
-
-    $print_job_url = "http://{$printer_ip}/api/v1/print_job";
-    $print_job_payload = [
-        'file' => [
-            'id' => $file_uuid,
-            'path' => '/' . basename($file_path),
-            'type' => 'machinecode'
-        ],
-        'target' => 'print_head'
-    ];
-
-    $print_response = wp_remote_post($print_job_url, [
-        'headers' => $headers,
-        'body' => json_encode($print_job_payload),
-        'timeout' => 30
-    ]);
-
-    if (is_wp_error($print_response)) {
-        error_log('Print job failed: ' . $print_response->get_error_message());
-        return false;
-    }
-
-    $print_status = wp_remote_retrieve_response_code($print_response);
-    if ($print_status !== 201) {
-        error_log('Print job failed. Status: ' . $print_status . ' Response: ' . wp_remote_retrieve_body($print_response));
-        return false;
-    }
-
-    update_post_meta($post_id, 'print_job_started', current_time('mysql'));
-    error_log('Successfully started print job for post ' . $post_id);
+    // Create CURLFile object
+    $cfile = new CURLFile($file_path, 'text/x-gcode', basename($file_path));
     
-    return true;
+    // Prepare the multipart form data
+    $post_data = array(
+        'jobname' => $job_name,
+        'file' => $cfile,
+        'owner' => $owner_name,
+        'created_at' => current_time('c')
+    );
+
+    error_log("Attempting to send print job to {$printer_ip} with auth ID: {$auth_id}");
+
+    // Configure cURL options with digest auth
+    curl_setopt_array($curl, array(
+        CURLOPT_URL => "http://{$printer_ip}/api/v1/print_job",
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => $post_data,
+        CURLOPT_HTTPAUTH => CURLAUTH_DIGEST,  // Changed to DIGEST authentication
+        CURLOPT_USERPWD => $auth_id . ":" . $api_key,
+        CURLOPT_TIMEOUT => 30,
+        CURLOPT_VERBOSE => true
+    ));
+
+    // Create a temporary file for CURL verbose output
+    $verbose_output = fopen('php://temp', 'w+');
+    curl_setopt($curl, CURLOPT_STDERR, $verbose_output);
+
+    // Execute request
+    $response = curl_exec($curl);
+    $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+    $curl_error = curl_error($curl);
+    
+    // Get verbose information
+    rewind($verbose_output);
+    $verbose_log = stream_get_contents($verbose_output);
+    fclose($verbose_output);
+
+    // Log detailed request information
+    error_log("CURL Verbose Output: " . $verbose_log);
+    error_log("HTTP Response Code: " . $http_code);
+    error_log("CURL Error (if any): " . $curl_error);
+    error_log("Response Body: " . $response);
+
+    curl_close($curl);
+
+    if ($curl_error) {
+        error_log("Print job failed - CURL Error: " . $curl_error);
+        return false;
+    }
+
+    if ($http_code === 401) {
+        error_log("Print job failed - Authentication failed. Please verify printer ID and API key.");
+        return false;
+    }
+
+    if ($http_code !== 201 && $http_code !== 200) {
+        error_log("Print job failed - Unexpected HTTP code: " . $http_code);
+        error_log("Response: " . $response);
+        return false;
+    }
+
+    // Parse response
+    $response_data = json_decode($response, true);
+    if (!empty($response_data['uuid'])) {
+        update_post_meta($post_id, 'print_job_uuid', $response_data['uuid']);
+        error_log("Print job successfully created with UUID: " . $response_data['uuid']);
+        update_post_meta($post_id, 'print_job_started', current_time('mysql'));
+        return true;
+    }
+
+    error_log("Print job submission completed but no UUID received in response");
+    return false;
 }
 
 function render_printer_settings_meta_box($post) {
     wp_nonce_field('printer_settings_nonce', 'printer_settings_nonce');
     $ip_address = get_post_meta($post->ID, 'printer_ip', true);
+    $printer_id = get_post_meta($post->ID, 'printer_id', true);
     $api_key = get_post_meta($post->ID, 'printer_api_key', true);
     ?>
     <p>
         <label for="printer_ip">Printer IP Address:</label>
         <input type="text" id="printer_ip" name="printer_ip" 
                value="<?php echo esc_attr($ip_address); ?>" 
-               style="width: 100%">
+               style="width: 100%" placeholder="e.g., 172.22.19.238">
+    </p>
+    <p>
+        <label for="printer_id">Printer ID:</label>
+        <input type="text" id="printer_id" name="printer_id" 
+               value="<?php echo esc_attr($printer_id); ?>" 
+               style="width: 100%" placeholder="e.g., c8d231cb0f0e375f637ad316dc6707bd">
     </p>
     <p>
         <label for="printer_api_key">API Key:</label>
         <input type="password" id="printer_api_key" name="printer_api_key" 
                value="<?php echo esc_attr($api_key); ?>" 
-               style="width: 100%">
+               style="width: 100%" placeholder="Enter API key">
+        <button type="button" id="toggle_api_key" class="button button-secondary" style="margin-top: 5px;">Show/Hide Key</button>
     </p>
+    <hr>
+    <div class="printer-actions">
+        <button type="button" id="test_credentials" class="button button-primary" style="margin-right: 10px;">Test Credentials</button>
+        <button type="button" id="register_app" class="button button-secondary">Register Application</button>
+        <div id="test_result" style="margin-top: 10px; padding: 10px; display: none;"></div>
+    </div>
+
+    <script>
+    jQuery(document).ready(function($) {
+        // Toggle API key visibility
+        $('#toggle_api_key').on('click', function(e) {
+            e.preventDefault();
+            var apiKeyField = $('#printer_api_key');
+            if (apiKeyField.attr('type') === 'password') {
+                apiKeyField.attr('type', 'text');
+            } else {
+                apiKeyField.attr('type', 'password');
+            }
+        });
+
+        // Test credentials
+        $('#test_credentials').on('click', function(e) {
+            e.preventDefault();
+            var ip = $('#printer_ip').val();
+            var printerId = $('#printer_id').val();
+            var apiKey = $('#printer_api_key').val();
+            var resultDiv = $('#test_result');
+            
+            if (!ip || !printerId || !apiKey) {
+                resultDiv.html('❌ Printer IP, ID and API Key are all required')
+                        .css('background-color', '#ffe6e6')
+                        .show();
+                return;
+            }
+            
+            resultDiv.html('Testing connection...').css('background-color', '#f8f9fa').show();
+            
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'test_printer_credentials',
+                    ip: ip,
+                    printer_id: printerId,
+                    api_key: apiKey,
+                    nonce: '<?php echo wp_create_nonce("test_printer_nonce"); ?>'
+                },
+                success: function(response) {
+                    if(response.success) {
+                        var details = response.data.details || {};
+                        var message = response.data.message;
+                        if (details.uuid) {
+                            message += '<br>Job UUID: ' + details.uuid;
+                        }
+                        if (details.response) {
+                            message += '<br>Printer response: ' + details.response;
+                        }
+                        resultDiv.html('✅ ' + message)
+                                .css('background-color', '#e6ffe6');
+                    } else {
+                        var error = response.data.message;
+                        if (response.data.technical_details) {
+                            error += '<br>Technical details: ' + 
+                                    JSON.stringify(response.data.technical_details);
+                        }
+                        resultDiv.html('❌ ' + error)
+                                .css('background-color', '#ffe6e6');
+                    }
+                },
+                error: function() {
+                    resultDiv.html('❌ Connection test failed. Please check your settings.')
+                            .css('background-color', '#ffe6e6');
+                }
+            });
+        });
+
+        // Register application
+        $('#register_app').on('click', function(e) {
+            e.preventDefault();
+            var ip = $('#printer_ip').val();
+            var resultDiv = $('#test_result');
+            
+            resultDiv.html('Registering application...').css('background-color', '#f8f9fa').show();
+            
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'register_printer_app',
+                    ip: ip,
+                    nonce: '<?php echo wp_create_nonce("register_app_nonce"); ?>'
+                },
+                success: function(response) {
+                    if(response.success) {
+                        resultDiv.html('✅ Registration successful. ID and key received.')
+                                .css('background-color', '#e6ffe6');
+                        
+                        if(response.data.id && response.data.key) {
+                            $('#printer_id').val(response.data.id);
+                            $('#printer_api_key').val(response.data.key);
+                        }
+                    } else {
+                        resultDiv.html('❌ Registration failed: ' + response.data.message)
+                                .css('background-color', '#ffe6e6');
+                    }
+                },
+                error: function() {
+                    resultDiv.html('❌ Registration failed. Please check your printer IP address.')
+                            .css('background-color', '#ffe6e6');
+                }
+            });
+        });
+    });
+    </script>
     <?php
 }
 
@@ -1963,6 +2164,10 @@ function save_printer_settings($post_id) {
     
     if (isset($_POST['printer_ip'])) {
         update_post_meta($post_id, 'printer_ip', sanitize_text_field($_POST['printer_ip']));
+    }
+    
+    if (isset($_POST['printer_id'])) {
+        update_post_meta($post_id, 'printer_id', sanitize_text_field($_POST['printer_id']));
     }
     
     if (isset($_POST['printer_api_key'])) {
@@ -2060,6 +2265,7 @@ function send_pending_submissions_notification() {
         ]
     ]));
     
+    // If there are no pending submissions, no need to send an email
     if ($pending_count <= 0) {
         return;
     }
@@ -2078,80 +2284,33 @@ function send_pending_submissions_notification() {
         return;
     }
 
-    // Get pending submissions details
-    $pending_submissions = get_posts([
-        'post_type' => '3d_submission',
-        'posts_per_page' => -1,
-        'meta_query' => [
-            [
-                'key' => 'approval_status',
-                'value' => 'inbehandeling',
-                'compare' => '='
-            ]
-        ]
-    ]);
-
     // Prepare email content
-    $subject = '3D Print Service - Aanvragen in wachtrij';
+    $subject = sprintf(
+        '%d 3D print %s wachten op review',
+        $pending_count,
+        $pending_count === 1 ? 'aanvraag' : 'aanvragen'
+    );
     
     $site_url = get_site_url();
     $admin_url = admin_url('edit.php?post_type=3d_submission&approval_status=inbehandeling');
     
-    $message = '<!DOCTYPE html>
-<html>
-<head>
-    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-    <meta name="x-apple-disable-message-reformatting" />
-    <meta name="format-detection" content="telephone=no" />
-</head>
-<body>
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <p>Beste beheerder,</p>
-        
-        <p>Er ' . ($pending_count === 1 ? 'is' : 'zijn') . ' momenteel <strong>' . $pending_count . '</strong> ';
+    $message = '<p>Beste beheerder,</p>';
+    $message .= '<p>Er ' . ($pending_count === 1 ? 'is' : 'zijn') . ' momenteel <strong>' . $pending_count . '</strong> ';
     $message .= '3D print ' . ($pending_count === 1 ? 'aanvraag' : 'aanvragen') . ' die op review ';
     $message .= ($pending_count === 1 ? 'wacht' : 'wachten') . '.</p>';
-
-    // Add details for each pending submission
-    $message .= '<h2>Aanvragen in wachtrij:</h2>';
-    foreach ($pending_submissions as $submission) {
-        $submission_url = get_edit_post_link($submission->ID, '');
-        $submission_date = get_the_date('j F Y', $submission->ID);
-        
-        $message .= '<div style="margin-bottom: 15px; padding: 10px; border: 1px solid #ddd; background-color: #f9f9f9;">';
-        $message .= '<strong>' . esc_html($submission->post_title) . '</strong><br>';
-        $message .= 'Ingediend op: ' . $submission_date . '<br>';
-        $message .= '<a href="' . esc_url($submission_url) . '" style="color: #0073aa; text-decoration: none;">Bekijk aanvraag</a>';
-        $message .= '</div>';
-    }
     
-    $message .= '<p><a href="' . esc_url($admin_url) . '" style="display: inline-block; padding: 10px 20px; background-color: #0073aa; color: #ffffff; text-decoration: none; border-radius: 3px;">Bekijk alle aanvragen in de wachtrij</a></p>';
+    $message .= '<p><a href="' . esc_url($admin_url) . '">Bekijk de wachtende aanvragen</a></p>';
     
-    $message .= '<hr style="border: 0; border-top: 1px solid #ddd; margin: 20px 0;">';
-    $message .= '<p style="color: #666; font-size: 12px;">Dit is een automatische melding van de 3D Print Service op ' . get_bloginfo('name') . '</p>';
-    $message .= '</div></body></html>';
+    $message .= '<hr>';
+    $message .= '<p><small>Dit is een automatische melding van de 3D Print Service op ' . get_bloginfo('name') . '</small></p>';
     
-    // Send email with headers to prevent tracking
+    // Send email
     $headers = [
         'Content-Type: text/html; charset=UTF-8',
-        'From: 3D Print Service <no-reply@' . parse_url($site_url, PHP_URL_HOST) . '>',
-        'X-Mailer: PHP/' . phpversion(),
-        'X-No-Track: true',
-        'X-SMTPAPI: {"filters":{"clicktrack":{"settings":{"enable":0}},"opentrack":{"settings":{"enable":0}}}}',
-        'List-Unsubscribe: <mailto:no-reply@' . parse_url($site_url, PHP_URL_HOST) . '>'
+        'From: 3D Print Service <no-reply@' . parse_url($site_url, PHP_URL_HOST) . '>'
     ];
     
-    // Force WordPress to use PHP mail instead of any other mail handler
-    add_filter('pre_wp_mail', function($null, $atts) use ($message, $headers) {
-        $atts['message'] = $message;
-        $atts['headers'] = $headers;
-        return $atts;
-    }, 10, 2);
-
     wp_mail($admin_emails, $subject, $message, $headers);
-
-    // Remove the filter after sending
-    remove_filter('pre_wp_mail', function(){}, 10);
 }
 
 // Register the hook for the notification
@@ -2189,3 +2348,86 @@ function deactivate_daily_notifications() {
 
 // Add deactivation hook
 register_deactivation_hook(__FILE__, 'deactivate_daily_notifications');
+
+function ensure_required_pages_absent() {
+    $required_pages = ['3D Bestand Indieningsformulier', '3D Print Richtlijnen'];
+    foreach ($required_pages as $page_title) {
+        $page = get_page_by_title($page_title);
+        if ($page) {
+            wp_delete_post($page->ID, true);
+        }
+    }
+}
+register_activation_hook(__FILE__, 'ensure_required_pages_absent');
+
+function test_printer_credentials_callback() {
+    // Check nonce
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'test_printer_nonce')) {
+        wp_send_json_error(['message' => 'Security check failed']);
+    }
+    
+    $ip = isset($_POST['ip']) ? sanitize_text_field($_POST['ip']) : '';
+    $printer_id = isset($_POST['printer_id']) ? sanitize_text_field($_POST['printer_id']) : '';
+    $api_key = isset($_POST['api_key']) ? sanitize_text_field($_POST['api_key']) : '';
+    
+    if (empty($ip) || empty($printer_id) || empty($api_key)) {
+        wp_send_json_error(['message' => 'IP address, Printer ID and API Key are all required']);
+    }
+
+    // Initialize cURL
+    $curl = curl_init();
+    
+    // Set cURL options with digest auth
+    curl_setopt_array($curl, [
+        CURLOPT_URL => "http://{$ip}/api/v1/system",
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPAUTH => CURLAUTH_DIGEST,
+        CURLOPT_USERPWD => $printer_id . ":" . $api_key,
+        CURLOPT_TIMEOUT => 5,
+        CURLOPT_VERBOSE => true
+    ]);
+
+    // Execute request
+    $response = curl_exec($curl);
+    $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+    $error = curl_error($curl);
+    
+    curl_close($curl);
+
+    if ($error) {
+        wp_send_json_error([
+            'message' => 'Connection failed: ' . $error,
+            'technical_details' => [
+                'curl_error' => $error,
+                'http_code' => $http_code
+            ]
+        ]);
+        return;
+    }
+
+    if ($http_code === 200) {
+        $system_data = json_decode($response, true);
+        wp_send_json_success([
+            'message' => 'Successfully connected to printer',
+            'details' => [
+                'name' => $system_data['name'] ?? 'Unknown',
+                'firmware' => $system_data['firmware'] ?? 'Unknown',
+                'response' => 'Authentication successful'
+            ]
+        ]);
+    } else {
+        $error_message = 'Connection test failed';
+        if ($http_code === 401) {
+            $error_message = 'Authentication failed. Please check your Printer ID and API key.';
+        }
+        
+        wp_send_json_error([
+            'message' => $error_message,
+            'technical_details' => [
+                'response' => $response,
+                'http_code' => $http_code
+            ]
+        ]);
+    }
+}
+add_action('wp_ajax_test_printer_credentials', 'test_printer_credentials_callback');
