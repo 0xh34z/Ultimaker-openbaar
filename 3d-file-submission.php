@@ -80,149 +80,8 @@ function add_meta_boxes() {
         'normal',
         'high'
     );
-    add_meta_box(
-        'print_queue',
-        __('Print Queue'),
-        'render_print_queue_meta_box',
-        'printer',
-        'normal',
-        'high'
-    );
 }
-
 add_action('add_meta_boxes', 'add_meta_boxes');
-
-function render_print_queue_meta_box($post) {
-    $queue = get_post_meta($post->ID, 'print_queue', true) ?: [];
-    ?>
-    <div class="print-queue">
-        <table class="wp-list-table widefat fixed striped">
-            <thead>
-                <tr>
-                    <th><?php _e('Submission'); ?></th>
-                    <th><?php _e('Added'); ?></th>
-                    <th><?php _e('Status'); ?></th>
-                    <th><?php _e('Actions'); ?></th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($queue as $index => $item) : 
-                    $submission = get_post($item['post_id']);
-                    if (!$submission) continue;
-                ?>
-                    <tr>
-                        <td><?php echo esc_html($submission->post_title); ?></td>
-                        <td><?php echo esc_html($item['added']); ?></td>
-                        <td><?php echo esc_html($item['status']); ?></td>
-                        <td>
-                            <?php if ($item['status'] === 'queued') : ?>
-                                <button class="button start-print" data-index="<?php echo $index; ?>"><?php _e('Start Print'); ?></button>
-                            <?php elseif ($item['status'] === 'printing') : ?>
-                                <button class="button cancel-print" data-index="<?php echo $index; ?>"><?php _e('Cancel'); ?></button>
-                            <?php endif; ?>
-                            <button class="button remove-item" data-index="<?php echo $index; ?>"><?php _e('Remove'); ?></button>
-                        </td>
-                    </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-    </div>
-    <script>
-    jQuery(document).ready(function($) {
-        $('.start-print').click(function() {
-            handleQueueAction('start', $(this).data('index'));
-        });
-        
-        $('.cancel-print').click(function() {
-            handleQueueAction('cancel', $(this).data('index'));
-        });
-        
-        $('.remove-item').click(function() {
-            handleQueueAction('remove', $(this).data('index'));
-        });
-
-        function handleQueueAction(action, index) {
-            $.post(ajaxurl, {
-                action: 'handle_print_queue',
-                printer_id: <?php echo $post->ID; ?>,
-                index: index,
-                queue_action: action,
-                security: '<?php echo wp_create_nonce('print_queue_nonce'); ?>'
-            }, function(response) {
-                if (response.success) {
-                    location.reload();
-                } else {
-                    alert('Error: ' + response.data);
-                }
-            });
-        }
-    });
-    </script>
-    <?php
-}
-function handle_print_queue_callback() {
-    check_ajax_referer('print_queue_nonce', 'security');
-
-    $printer_id = isset($_POST['printer_id']) ? intval($_POST['printer_id']) : 0;
-    $index = isset($_POST['index']) ? intval($_POST['index']) : -1;
-    $action = isset($_POST['queue_action']) ? sanitize_text_field($_POST['queue_action']) : '';
-
-    $queue = get_post_meta($printer_id, 'print_queue', true) ?: [];
-
-    if (!isset($queue[$index])) {
-        wp_send_json_error(__('Invalid queue item'));
-    }
-
-    switch ($action) {
-        case 'start':
-            // Check for active prints
-            foreach ($queue as $item) {
-                if ($item['status'] === 'printing') {
-                    wp_send_json_error(__('Another print is in progress'));
-                }
-            }
-
-            // Start print
-            $queue[$index]['status'] = 'printing';
-            update_post_meta($printer_id, 'print_queue', $queue);
-            
-            // Send to printer
-            $result = send_gcode_to_printer($queue[$index]['post_id'], $printer_id);
-            
-            if (!$result) {
-                $queue[$index]['status'] = 'failed';
-                update_post_meta($printer_id, 'print_queue', $queue);
-                wp_send_json_error(__('Failed to start print'));
-            }
-            break;
-
-        case 'cancel':
-            // Cancel print on printer
-            $printer_ip = get_post_meta($printer_id, 'printer_ip', true);
-            $response = wp_remote_request("http://{$printer_ip}/api/v1/print_job", [
-                'method' => 'DELETE',
-                'timeout' => 5
-            ]);
-
-            if (!is_wp_error($response)) {
-                $queue[$index]['status'] = 'cancelled';
-                update_post_meta($printer_id, 'print_queue', $queue);
-            }
-            break;
-
-        case 'remove':
-            array_splice($queue, $index, 1);
-            update_post_meta($printer_id, 'print_queue', $queue);
-            break;
-
-        default:
-            wp_send_json_error(__('Invalid action'));
-    }
-
-    wp_send_json_success();
-}
-
-add_action('wp_ajax_handle_print_queue', 'handle_print_queue_callback');
 
 function render_extra_info_meta_box($post) {
     $fields = [
@@ -870,35 +729,21 @@ function save_submission_data($post_id) {
         send_approval_notification($post_id, $old_status, $new_status);
     }
     
-    // If status is changed to goedgekeurd, add to printer's queue
-    if ($new_status === 'goedgekeurd') {
-        $printer_id = get_post_meta($post_id, 'selected_printer', true);
-        if ($printer_id) {
-            $printer_queue = get_post_meta($printer_id, 'print_queue', true) ?: [];
-            $exists = false;
-            foreach ($printer_queue as $item) {
-                if ($item['post_id'] === $post_id) {
-                    $exists = true;
-                    break;
-                }
-            }
-            if (!$exists) {
-                $printer_queue[] = [
-                    'post_id' => $post_id,
-                    'added' => current_time('mysql'),
-                    'status' => 'queued'
-                ];
-                update_post_meta($printer_id, 'print_queue', $printer_queue);
-                
-                // Add feedback about successful queue addition
-                add_filter('redirect_post_location', function($location) {
-                    return add_query_arg('print_success', '1', $location);
-                });
-            }
+    // Only try to send to printer if we're approving
+    if ($approving_submission) {
+        $print_result = send_gcode_to_printer($post_id);
+        
+        // Add feedback about the print job submission
+        if (!$print_result) {
+            add_filter('redirect_post_location', function($location) {
+                return add_query_arg('3d_error', 'print_job_failed', $location);
+            });
+        } else {
+            add_filter('redirect_post_location', function($location) {
+                return add_query_arg('print_success', '1', $location);
+            });
         }
     }
-    
-    // Removed the direct send_gcode_to_printer call
 }
 
 add_action('save_post', 'save_submission_data');
@@ -2035,9 +1880,10 @@ function printer_admin_styles() {
     </style>';
 }
 
-function send_gcode_to_printer($post_id, $printer_id) {
-    $printer_ip = get_post_meta($printer_id, 'printer_ip', true);
-
+function send_gcode_to_printer($post_id) {
+    // Force refresh from database to get the latest status
+    wp_cache_flush();
+    
     error_log("Starting print job submission for post ID: " . $post_id);
     
     $approval_status = get_post_meta($post_id, 'approval_status', true);
@@ -2054,6 +1900,8 @@ function send_gcode_to_printer($post_id, $printer_id) {
     }
     
     $printer_ip = get_post_meta($printer_id, 'printer_ip', true);
+    $auth_id = get_post_meta($printer_id, 'printer_id', true);
+    $api_key = get_post_meta($printer_id, 'printer_api_key', true);
 
     // Validate printer settings
     if (empty($printer_ip)) {
@@ -2076,26 +1924,55 @@ function send_gcode_to_printer($post_id, $printer_id) {
         return false;
     }
 
+    // Check printer status first to determine which API to use
+    $printer_status = check_printer_status($printer_ip);
+    error_log("Printer status check: " . ($printer_status ? $printer_status : "failed"));
+    
     // Initialize cURL
     $curl = curl_init();
     
     // Create CURLFile object
     $cfile = new CURLFile($file_path, 'text/x-gcode', basename($file_path));
     
-    // Prepare the form data - much simpler now, just the file
-    $post_data = array('file' => $cfile);
+    // If printer is idle and we have credentials, use the API/v1 endpoint
+    // Otherwise use the cluster API which doesn't require auth but queues the job
+    if ($printer_status === 'idle' && !empty($auth_id) && !empty($api_key)) {
+        error_log("Printer is idle. Using API/v1/print_job endpoint with authentication.");
+        
+        // Prepare the form data
+        $post_data = array(
+            'job_name' => get_the_title($post_id),
+            'owner' => 'WordPress-3D-Print-Service',
+            'file' => $cfile
+        );
 
-    error_log("Attempting to send print job to {$printer_ip} using cluster API");
+        // Configure cURL options with auth
+        curl_setopt_array($curl, array(
+            CURLOPT_URL => "http://{$printer_ip}/api/v1/print_job",
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPAUTH => CURLAUTH_DIGEST,
+            CURLOPT_USERPWD => $auth_id . ":" . $api_key,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $post_data,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_VERBOSE => true
+        ));
+    } else {
+        error_log("Printer is not idle or missing credentials. Using cluster-api endpoint without authentication.");
+        
+        // Prepare the form data - simpler for cluster API
+        $post_data = array('file' => $cfile);
 
-    // Configure cURL options - no auth needed for cluster API
-    curl_setopt_array($curl, array(
-        CURLOPT_URL => "http://{$printer_ip}/cluster-api/v1/print_jobs/",
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => $post_data,
-        CURLOPT_TIMEOUT => 30,
-        CURLOPT_VERBOSE => true
-    ));
+        // Configure cURL options without auth
+        curl_setopt_array($curl, array(
+            CURLOPT_URL => "http://{$printer_ip}/cluster-api/v1/print_jobs/",
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $post_data,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_VERBOSE => true
+        ));
+    }
 
     // Create a temporary file for CURL verbose output
     $verbose_output = fopen('php://temp', 'w+');
@@ -2141,6 +2018,37 @@ function send_gcode_to_printer($post_id, $printer_id) {
 
     error_log("Print job submission completed but no UUID received in response");
     return true; // Still return true as the HTTP status indicated success
+}
+
+// Helper function to check if printer is idle
+function check_printer_status($printer_ip) {
+    try {
+        $response = wp_remote_get("http://{$printer_ip}/api/v1/printer/status", [
+            'timeout' => 5
+        ]);
+        
+        if (is_wp_error($response)) {
+            error_log("Printer status check failed: " . $response->get_error_message());
+            return false;
+        }
+        
+        $status_code = wp_remote_retrieve_response_code($response);
+        if ($status_code !== 200) {
+            error_log("Printer status check returned code: " . $status_code);
+            return false;
+        }
+        
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+        if (isset($body['status'])) {
+            error_log("Printer status: " . strtolower($body['status']));
+            return strtolower($body['status']);
+        }
+        
+        return false;
+    } catch (Exception $e) {
+        error_log("Exception during printer status check: " . $e->getMessage());
+        return false;
+    }
 }
 
 function render_printer_settings_meta_box($post) {
