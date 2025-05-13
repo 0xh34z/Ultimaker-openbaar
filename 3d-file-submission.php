@@ -1,14 +1,14 @@
 <?php 
 /*
-Plugin Name: 3D Bestand indiening
-Description: MITM 3D bestand indiening plugin voor Ultimaker printers.
+Plugin Name: Envío de archivos 3D.
+Description: Complemento de carga de archivos 3D MITM para impresoras Ultimaker.
 Version: 1.0
-Author: Kevin, Milos en Kasper
+Author: Kevin, Milos y Kasper
 */
 
 defined('ABSPATH') or die('feinfeinfein');
 
-ffunction register_custom_post_types() {
+function register_custom_post_types() {
     register_post_type('3d_submission',
         array(
             'labels'      => array(
@@ -291,7 +291,7 @@ function render_extra_info_meta_box($post) {
         $printer_name = $printer_post ? $printer_post->post_title : '(impresora eliminada)';
     }
     echo '<p><strong>Impresora seleccionada:</strong><br>' . esc_html($printer_name) . '</p>';
-}    $fields = [
+    $fields = [
         'klas_opleiding' => 'Klas/Opleiding',
         'Motief' => 'Motief',
         'toelichting' => 'Toelichting',
@@ -647,14 +647,14 @@ function render_file_preview_meta_box($post) {
 
     if ($model_url) {
         echo '<div class="preview-section">';
-        echo '<h3>3D Model Preview</h3>';
+        echo '<h3>Vista previa del modelo 3D</h3>';
         
         $model_extension = strtolower(pathinfo($model_url, PATHINFO_EXTENSION));
         
         if (in_array($model_extension, ['glb', 'gltf'])) {
             echo '<model-viewer 
                     src="' . esc_url($model_url) . '" 
-                    alt="3D Model Preview" 
+                    alt="Vista previa del modelo 3D" 
                     auto-rotate 
                     camera-controls 
                     style="width: 100%; height: 400px; margin-bottom: 20px;">
@@ -747,14 +747,14 @@ function render_file_preview_meta_box($post) {
         }
         echo '</div>';
     } else {
-        echo '<p>No 3D file attached</p>';
+        echo '<p>No hay archivo 3D adjunto</p>';
     }
 
         if ($gcode_url) {
             echo '<div class="preview-section">';
-            echo '<h3>G-code Preview</h3>';
+            echo '<h3>Vista previa del G-code</h3>';
             echo '<div id="gcode-viewer" style="width: 100%; height: 600px; border: 1px solid #ccc; position: relative;">';
-            echo '<div id="loading-overlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.8); display: flex; justify-content: center; align-items: center;">Loading G-code preview...</div>';
+            echo '<div id="loading-overlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.8); display: flex; justify-content: center; align-items: center;">Cargando vista previa del G-code...</div>';
             echo '</div>';
             ?>
             <script>
@@ -882,7 +882,7 @@ function render_file_preview_meta_box($post) {
             <?php
             echo '</div>';
         } else {
-            echo '<p>No G-code file attached</p>';
+            echo '<p>No hay archivo G-code adjunto</p>';
         }
     
         echo '</div>';
@@ -1053,7 +1053,7 @@ add_action('admin_notices', 'admin_notice_submission_messages');
 function submission_form_shortcode() {
     ob_start();
     if (!is_user_logged_in()) {
-        echo '<p>U moet ingelogd zijn om een bestand in te dienen. <a href="' . esc_url(wp_login_url(get_permalink())) . '">Klik hier om in te loggen</a> of <a href="' . esc_url(wp_registration_url()) . '">registreer hier</a>.</p>';
+        echo '<p>Debe iniciar sesión para enviar un archivo. <a href="' . esc_url(wp_login_url(get_permalink())) . '">Haga clic aquí para iniciar sesión</a> o <a href="' . esc_url(wp_registration_url()) . '">regístrese aquí</a>.</p>';
         return ob_get_clean();
     }
 
@@ -1071,26 +1071,26 @@ function handle_file_submission() {
     require_once(ABSPATH . 'wp-admin/includes/file.php');
     require_once(ABSPATH . 'wp-admin/includes/image.php');
 
-    echo '<div id="submission-status" class="submission-notice">Processing submission...</div>';
+    echo '<div id="submission-status" class="submission-notice">Procesando envío...</div>';
 
     if (!isset($_POST['_wpnonce']) || !wp_verify_nonce($_POST['_wpnonce'], 'submit_3d_file')) {
-        echo '<div class="error">Security check failed. Please try again.</div>';
+        echo '<div class="error">Falló la verificación de seguridad. Por favor, inténtelo de nuevo.</div>';
         return;
     }
 
     $user_id = get_current_user_id();
     if (!$user_id) {
-        echo '<div class="error">You must be logged in to submit files.</div>';
+        echo '<div class="error">Debe iniciar sesión para enviar archivos.</div>';
         return;
     }
 
     if (empty($_POST['file_title'])) {
-        echo '<div class="error">Please provide a file title.</div>';
+        echo '<div class="error">Por favor, proporcione un título para el archivo.</div>';
         return;
     }
 
     if (empty($_FILES['3d_file'])) {
-        echo '<div class="error">3D file upload failed. Please try again.</div>';
+        echo '<div class="error">Falló la carga del archivo 3D. Por favor, inténtelo de nuevo.</div>';
         return;
     }
 
@@ -1099,7 +1099,7 @@ function handle_file_submission() {
     $movefile_3d = wp_handle_upload($uploaded_3d_file, $upload_overrides);
 
     if (isset($movefile_3d['error'])) {
-        echo '<div class="error">3D file error: ' . esc_html($movefile_3d['error']) . '</div>';
+        echo '<div class="error">Error en el archivo 3D: ' . esc_html($movefile_3d['error']) . '</div>';
         return;
     }
 
@@ -1111,7 +1111,7 @@ function handle_file_submission() {
     ]);
 
     if (is_wp_error($post_id)) {
-        echo '<div class="error">Submission error: ' . $post_id->get_error_message() . '</div>';
+        echo '<div class="error">Error en el envío: ' . $post_id->get_error_message() . '</div>';
         return;
     }
 
@@ -1198,7 +1198,7 @@ function handle_file_submission() {
 
     send_approval_notification($post_id, '', 'inbehandeling');
     
-    echo '<div class="success">Formulier succesvol ingediend! Uw print wordt beoordeeld.</div>';
+    echo '<div class="success">¡Formulario enviado con éxito! Su impresión será revisada.</div>';
     echo '<script>document.getElementById("submission-status").remove();</script>';
 }
 
@@ -1262,7 +1262,7 @@ function display_submission_form() {
     ]);
     
     echo '<div class="printer-status-overview">';
-    echo '<h3>Printer Beschikbaarheid</h3>';
+    echo '<h3>Disponibilidad de impresoras</h3>';
     
     foreach ($printers as $printer) {
         $printer_ip = get_post_meta($printer->ID, 'printer_ip', true);
@@ -1271,14 +1271,14 @@ function display_submission_form() {
         echo '<div class="printer-status">';
         echo '<strong>' . esc_html($printer->post_title) . '</strong>: ';
         echo '<span class="status-indicator ' . esc_attr($status_data['state']) . '">';
-        echo $status_data['state'] === 'offline' ? 'Beschikbaar' : 'Bezig met printen';
+        echo $status_data['state'] === 'offline' ? 'Disponible' : 'Imprimiendo';
         echo '</span>';
         
         if ($status_data['state'] === 'printing') {
             $time_total = isset($status_data['time_total']) ? $status_data['time_total'] : 0;
             $time_elapsed = isset($status_data['time_elapsed']) ? $status_data['time_elapsed'] : 0;
             $remaining = max(0, $time_total - $time_elapsed);
-            echo ' - Voltooiing over: ' . human_readable_time($remaining);
+            echo ' - Finalización en: ' . human_readable_time($remaining);
         }
         
         echo '</div>';
@@ -1288,23 +1288,23 @@ function display_submission_form() {
     ?>
     <form method="post" enctype="multipart/form-data">
         <?php wp_nonce_field('submit_3d_file'); ?>
-        <p><label>Bestand Titel: <input type="text" name="file_title" required></label></p>
-        <p><label>3D Bestand (STL, OBJ, etc.): <input type="file" name="3d_file" accept=".stl,.obj,.fbx,.3ds,.glb,.gltf" required></label></p>
-        <p><label>G-code Bestand: <input type="file" name="gcode_file" accept=".gcode"></label></p>
+        <p><label>Título del archivo: <input type="text" name="file_title" required></label></p>
+        <p><label>Archivo 3D (STL, OBJ, etc.): <input type="file" name="3d_file" accept=".stl,.obj,.fbx,.3ds,.glb,.gltf" required></label></p>
+        <p><label>Archivo G-code: <input type="file" name="gcode_file" accept=".gcode"></label></p>
         <p>
-            <label for="Motief" required>Motief: </label>
+            <label for="Motief" required>Motivo: </label>
             <select name="Motief">
-                <option value="Prive">Prive</option>
-                <option value="School">School</option>
+                <option value="Prive">Privado</option>
+                <option value="School">Escuela</option>
             </select>
-            <label>toelichting <input type="text" name="toelichting" required></label>
+            <label>Explicación <input type="text" name="toelichting" required></label>
         </p>
-        <p><label>Deadline: <input type="date" name="submission_deadline" required></label></p>
+        <p><label>Fecha límite: <input type="date" name="submission_deadline" required></label></p>
         
         <p>
-            <label for="selected_printer">Selecteer Printer: </label>
+            <label for="selected_printer">Seleccione impresora: </label>
             <select name="selected_printer" id="selected_printer" required>
-                <option value="">Kies een printer...</option>
+                <option value="">Elija una impresora...</option>
                 <?php foreach ($printers as $printer) : ?>
                     <option value="<?php echo esc_attr($printer->ID); ?>">
                         <?php echo esc_html($printer->post_title); ?>
@@ -1314,10 +1314,10 @@ function display_submission_form() {
         </p>
 
         <p>
-            <input type="submit" name="submit_3d_file_btn" value="Verzenden">
+            <input type="submit" name="submit_3d_file_btn" value="Enviar">
             <label>
                 <input type="checkbox" name="rules_agree" required>
-                Ik ga akkoord met de <a href="<?php echo get_permalink(get_page_by_title('3D Print Richtlijnen')); ?>" target="_blank">regels voor afdrukken</a>
+                Estoy de acuerdo con las <a href="<?php echo get_permalink(get_page_by_title('Directrices de impresión 3D')); ?>" target="_blank">reglas de impresión</a>
             </label>
         </p>
     </form>
@@ -1332,7 +1332,7 @@ function display_submission_form() {
                 document.getElementById('total-wait-time').textContent = formatTime(total);
             } catch (error) {
                 console.error('Error fetching printer status:', error);
-                document.getElementById('total-wait-time').textContent = 'Onbekend';
+                document.getElementById('total-wait-time').textContent = 'Desconocido';
             }
         }
 
@@ -1368,13 +1368,13 @@ function get_printer_status_api(WP_REST_Request $request) {
 function manage_3d_submission_columns($columns) {
     $new_columns = [
         'cb' => $columns['cb'],
-        'title' => 'Titel',
-        'author' => 'Auteur',
-        'status' => 'Status',
-        '3d_file' => '3D Bestand',
+        'title' => 'Título',
+        'author' => 'Autor',
+        'status' => 'Estado',
+        '3d_file' => 'Archivo 3D',
         'gcode_file' => 'G-code',
-        'deadline' => 'Deadline',
-        'date' => 'Datum'
+        'deadline' => 'Fecha límite',
+        'date' => 'Fecha'
     ];
     return $new_columns;
 }
@@ -1387,22 +1387,22 @@ function populate_3d_submission_columns($column, $post_id) {
             $status = get_post_meta($post_id, 'approval_status', true);
             switch ($status) {
                 case 'geslaagd':
-                    echo '<span style="color: green;">Geslaagd</span>';
+                    echo '<span style="color: green;">Completado</span>';
                     break;
                 case 'gefaald':
-                    echo '<span style="color: red;">Gefaald</span>';
+                    echo '<span style="color: red;">Fallido</span>';
                     break;
                 case 'inbehandeling':
-                    echo '<span style="color: orange;">In behandeling</span>';
+                    echo '<span style="color: orange;">En revisión</span>';
                     break;
                 case 'goedgekeurd':
-                    echo '<span style="color: green;">Goedgekeurd</span>';
+                    echo '<span style="color: green;">Aprobado</span>';
                     break;
                 case 'afgewezen':
-                    echo '<span style="color: red;">Afgewezen</span>';
+                    echo '<span style="color: red;">Rechazado</span>';
                     break;
                 default:
-                    echo 'Geen status';}
+                    echo 'Sin estado';}
             break;
         case '3d_file':
             $file_url = get_post_meta($post_id, '3d_file_url', true);
@@ -1411,7 +1411,7 @@ function populate_3d_submission_columns($column, $post_id) {
                 echo '<a href="' . esc_url($file_url) . '" target="_blank" download>'
                      . esc_html($file_name) . '</a>';
             } else {
-                echo '<em>Geen 3D bestand</em>';
+                echo '<em>Sin archivo 3D</em>';
             }
             break;
         case 'gcode_file':
@@ -1421,7 +1421,7 @@ function populate_3d_submission_columns($column, $post_id) {
                 echo '<a href="' . esc_url($gcode_url) . '" target="_blank" download>'
                      . esc_html($file_name) . '</a>';
             } else {
-                echo '<em>Geen G-code</em>';
+                echo '<em>Sin G-code</em>';
             }
             break;
         case 'deadline':
@@ -1431,7 +1431,7 @@ function populate_3d_submission_columns($column, $post_id) {
                 $status_class = (strtotime($deadline) < time()) ? 'style="color:red;"' : '';
                 echo '<span ' . $status_class . '>' . esc_html($formatted_date) . '</span>';
             } else {
-                echo 'Geen deadline';
+                echo 'Sin fecha límite';
             }
             break;
         case 'author':
@@ -1457,63 +1457,63 @@ function send_approval_notification($post_id, $old_status, $new_status) {
 
     $headers = array(
         'Content-Type: text/html; charset=UTF-8',
-        'From: 3D Print Service <no-reply@' . $_SERVER['HTTP_HOST'] . '>'
+        'From: Servicio de impresión 3D <no-reply@' . $_SERVER['HTTP_HOST'] . '>'
     );
 
-    $subject = "3D Print Status: " . $post->post_title;
+    $subject = "Estado de impresión 3D: " . $post->post_title;
 
-    $message = "<p>Beste gebruiker,</p>";
-    $message .= "<p>Er is een update voor uw 3D-printaanvraag <strong>" . esc_html($post->post_title) . "</strong>:</p>";
+    $message = "<p>Estimado usuario,</p>";
+    $message .= "<p>Hay una actualización para su solicitud de impresión 3D <strong>" . esc_html($post->post_title) . "</strong>:</p>";
 
     switch($new_status) {
         case 'geslaagd':
-            $subject = "✅ Print Succesvol: " . $post->post_title;
-            $message .= "<p style='color: #2ecc71; font-weight: bold;'>Uw 3D-print is succesvol voltooid!</p>";
-            $message .= "<p>U kunt uw print ophalen volgens de afspraken met de beheerder.</p>";
+            $subject = "✅ Impresión exitosa: " . $post->post_title;
+            $message .= "<p style='color: #2ecc71; font-weight: bold;'>¡Su impresión 3D se ha completado con éxito!</p>";
+            $message .= "<p>Puede recoger su impresión según lo acordado con el administrador.</p>";
             break;
 
         case 'gefaald':
-            $subject = "❌ Print Mislukt: " . $post->post_title;
-            $message .= "<p style='color: #e74c3c; font-weight: bold;'>Helaas is uw 3D-print mislukt.</p>";
+            $subject = "❌ Impresión fallida: " . $post->post_title;
+            $message .= "<p style='color: #e74c3c; font-weight: bold;'>Lamentablemente, su impresión 3D ha fallado.</p>";
             
             $failure_reason = get_post_meta($post_id, 'failure_reason', true);
             if(!empty($failure_reason)) {
                 $message .= "<div style='background: #f9ebea; padding: 15px; margin: 15px 0;'>";
-                $message .= "<h4 style='margin-top:0;'>Reden van mislukking:</h4>";
+                $message .= "<h4 style='margin-top:0;'>Razón del fallo:</h4>";
                 $message .= wpautop(esc_html($failure_reason));
                 $message .= "</div>";
             }
             
-            $message .= "<p>Neem contact op voor meer informatie over mogelijke oplossingen.</p>";
+            $message .= "<p>Póngase en contacto para obtener más información sobre posibles soluciones.</p>";
             break;
 
         case 'goedgekeurd':
-            $subject = "✔️ Print Goedgekeurd: " . $post->post_title;
-            $message .= "<p style='color: #27ae60;'>Uw print is goedgekeurd en wordt aan de wachtrij toegevoegd.</p>";
-            $message .= "<p>U ontvangt een nieuwe update wanneer de print voltooid is.</p>";
+            $subject = "✔️ Impresión aprobada: " . $post->post_title;
+            $message .= "<p style='color: #27ae60;'>Su impresión ha sido aprobada y se añadirá a la cola.</p>";
+            $message .= "<p>Recibirá una nueva actualización cuando la impresión se haya completado.</p>";
             break;
 
         case 'afgewezen':
-            $subject = "⛔ Print Afgewezen: " . $post->post_title;
-            $message .= "<p style='color: #e67e22;'>Uw printaanvraag is helaas afgewezen.</p>";
+            $subject = "⛔ Impresión rechazada: " . $post->post_title;
+            $message .= "<p style='color: #e67e22;'>Lamentablemente, su solicitud de impresión ha sido rechazada.</p>";
             
             $rejection_reason = get_post_meta($post_id, 'rejection_reason', true);
             if(!empty($rejection_reason)) {
                 $message .= "<div style='background: #fdefe6; padding: 15px; margin: 15px 0;'>";
-                $message .= "<h4 style='margin-top:0;'>Reden van afwijzing:</h4>";
+                $message .= "<h4 style='margin-top:0;'>Razón del rechazo:</h4>";
                 $message .= wpautop(esc_html($rejection_reason));
                 $message .= "</div>";
             }
             break;
 
         default:
-            $message .= "<p>Status update: " . ucfirst($new_status) . "</p>";
+            $message .= "<p>Actualización de estado: " . ucfirst($new_status) . "</p>";
     }
 
     $message .= "<hr style='margin:20px 0; border-color:#eee;'>";
     $message .= "<p style='font-size:0.9em; color:#666;'>";
-    $message .= "Dit is een automatisch bericht. U kunt niet direct reageren op deze email.<br>";
-    $message .= "3D Print Service - " . get_bloginfo('name') . "</p>";
+    $message .= "Este es un mensaje automático. No puede responder directamente a este correo electrónico.<br>";
+    $message .= "Servicio de impresión 3D - " . get_bloginfo('name') . "</p>";
 
     $attachments = array();
     if(in_array($new_status, ['afgewezen', 'gefaald'])) {
@@ -1535,7 +1535,7 @@ function send_approval_notification($post_id, $old_status, $new_status) {
         $attachments
     );
 
-    error_log("[3D Print] Status email voor {$post_id} ({$new_status}) " . ($email_sent ? "verzonden" : "mislukt"));
+    error_log("[Impresión 3D] Correo electrónico de estado para {$post_id} ({$new_status}) " . ($email_sent ? "enviado" : "fallido"));
 }
 
 function plugin_activation_setup() {
@@ -1545,8 +1545,8 @@ function plugin_activation_setup() {
     activate_daily_notifications();
 
     $default_printers = [
-        ['title' => 'printer rechts', 'ip' => '172.22.19.238'],
-        ['title' => 'printer links', 'ip' => '172.22.16.53']
+        ['title' => 'impresora derecha', 'ip' => '172.22.19.238'],
+        ['title' => 'impresora izquierda', 'ip' => '172.22.16.53']
     ];
 
     foreach ($default_printers as $printer) {
@@ -1591,13 +1591,13 @@ function plugin_activation_setup() {
 function create_pages() {
     try {
         $submission_page = [
-            'title' => '3D Bestand Indieningsformulier',
+            'title' => 'Formulario de envío de archivo 3D',
             'content' => "[3d_file_submission]\n[hotend_id_info]\n[current_material]",
             'option' => '3d_submission_page_id'
         ];
 
         $rules_page = [
-            'title' => '3D Print Richtlijnen',
+            'title' => 'Directrices de impresión 3D',
             'content' => get_rules_content(),
             'option' => '3d_print_rules_page_id'
         ];
@@ -1633,24 +1633,24 @@ function create_pages() {
 function get_rules_content() {
     return <<<HTML
 <div class="print-rules-container">
-    <h1>3D Print Richtlijnen</h1>
-    <h2>Basics voor 3D printen</h2>
-    <p>Beste student, voordat je gaat 3D-printen, zijn er een aantal dingen die je moet weten voordat je een printopdracht instuurt. Wij raden je aan om dit hele document te lezen om problemen te voorkomen.</p>
+    <h1>Directrices de impresión 3D</h1>
+    <h2>Conceptos básicos para la impresión 3D</h2>
+    <p>Estimado estudiante, antes de comenzar a imprimir en 3D, hay algunas cosas que debe saber antes de enviar una tarea de impresión. Le recomendamos que lea todo este documento para evitar problemas.</p>
 
-    <p><strong>Bestand slicen</strong><br>
-    Om je bestand te slicen tot een .gcode raden wij je aan om de Cura-slicer te downloaden. Dit is de officiële slicer van de Ultimaker-printers die wij gebruiken. Andere slicers kunnen ook werken als je deze goed hebt ingesteld. Zorg ervoor dat je de Ultimaker S7 selecteert als printer.</p>
+    <p><strong>Archivo de corte</strong><br>
+    Para cortar su archivo a un .gcode, le recomendamos que descargue el cortador Cura. Este es el cortador oficial de las impresoras Ultimaker que usamos. Otros cortadores también pueden funcionar si están configurados correctamente. Asegúrese de seleccionar el Ultimaker S7 como impresora.</p>
 
-    <p><strong>Model positioneren</strong><br>
-    Zorg ervoor dat je weet wat je print. Een 3D-geprint object is sterk, maar de zwakke punten zitten vaak tussen de lagen. Bijvoorbeeld: als je een haakje wilt printen waar je je jas aan kunt hangen, positioneer het model zo dat de printlijnen verticaal zijn. Zo zijn er geen zwakke punten en heb je een sterkere print.  
-    Probeer ook het model zo plat mogelijk te positioneren, zodat er geen onnodige supports geprint hoeven te worden.</p>
+    <p><strong>Posicionamiento del modelo</strong><br>
+    Asegúrese de saber lo que está imprimiendo. Un objeto impreso en 3D es fuerte, pero los puntos débiles suelen estar entre las capas. Por ejemplo: si desea imprimir un gancho para colgar su abrigo, posicione el modelo de manera que las líneas de impresión sean verticales. Así no hay puntos débiles y tiene una impresión más fuerte.  
+    También intente posicionar el modelo lo más plano posible, para que no sea necesario imprimir soportes innecesarios.</p>
 
-    <p><strong>Materialen</strong><br>
-    Op Scalda gebruiken wij drie soorten filament (plasticsoorten): PLA, ABS en PETG.</p>
+    <p><strong>Materiales</strong><br>
+    En Scalda usamos tres tipos de filamento (tipos de plástico): PLA, ABS y PETG.</p>
 
     <ul>
-        <li><strong>PLA-filament:</strong> Ideaal voor kunst- en ambachtelijke projecten, decoratieve objecten, prototyping en projecten waarbij milieuvriendelijkheid een prioriteit is.</li>
-        <li><strong>ABS-filament:</strong> Geschikt voor functionele onderdelen, engineeringtoepassingen, onderdelen die bestendig moeten zijn tegen hogere temperaturen en toepassingen waarbij duurzaamheid van cruciaal belang is.</li>
-        <li><strong>PETG-filament:</strong> Is geschikt voor prints die buiten worden gebruikt. Dit filament is zeer bestendig tegen het weer en ook hoge temperaturen.</li>
+        <li><strong>Filamento PLA:</strong> Ideal para proyectos artísticos y artesanales, objetos decorativos, prototipos y proyectos donde la ecología es una prioridad.</li>
+        <li><strong>Filamento ABS:</strong> Adecuado para piezas funcionales, aplicaciones de ingeniería, piezas que deben ser resistentes a altas temperaturas y aplicaciones donde la durabilidad es crucial.</li>
+        <li><strong>Filamento PETG:</strong> Es adecuado para impresiones que se utilizan al aire libre. Este filamento es muy resistente al clima y también a altas temperaturas.</li>
     </ul>
 </div>
 HTML;
@@ -1804,7 +1804,7 @@ add_action('admin_head', 'remove_permalink_section');
 function customize_3d_submission_columns($columns) {
     unset($columns['date']);
     unset($columns['slug']);
-    $columns['date'] = 'Datum';
+    $columns['date'] = 'Fecha';
     return $columns;
 }
 add_filter('manage_3d_submission_posts_columns', 'customize_3d_submission_columns');
@@ -2068,9 +2068,9 @@ add_action('wp_head', 'add_printer_info_styles');
 function manage_printer_columns($columns) {
     $new_columns = [
         'cb' => $columns['cb'],
-        'title' => __('Printer Name'),
-        'ip_address' => __('IP Address'),
-        'status' => __('Status')
+        'title' => __('Nombre de la impresora'),
+        'ip_address' => __('Dirección IP'),
+        'status' => __('Estado')
     ];
     return $new_columns;
 }
@@ -2084,13 +2084,13 @@ function populate_printer_columns($column, $post_id) {
         case 'status':
             $printer_ip = get_post_meta($post_id, 'printer_ip', true);
             if (!$printer_ip) {
-                echo '<em>No IP configured</em>';
+                echo '<em>No se configuró la IP</em>';
                 break;
             }
             
             $status_data = get_print_job_data($printer_ip);
             if (!$status_data) {
-                echo '<span style="color: #ff0000;">Offline</span>';
+                echo '<span style="color: #ff0000;">Desconectado</span>';
                 break;
             }
             
@@ -2287,28 +2287,28 @@ function render_printer_settings_meta_box($post) {
     $api_key = get_post_meta($post->ID, 'printer_api_key', true);
     ?>
     <p>
-        <label for="printer_ip">Printer IP Address:</label>
+        <label for="printer_ip">Dirección IP de la impresora:</label>
         <input type="text" id="printer_ip" name="printer_ip" 
                value="<?php echo esc_attr($ip_address); ?>" 
                style="width: 100%" placeholder="e.g., 172.22.19.238">
     </p>
     <p>
-        <label for="printer_id">Printer ID:</label>
+        <label for="printer_id">ID de la impresora:</label>
         <input type="text" id="printer_id" name="printer_id" 
                value="<?php echo esc_attr($printer_id); ?>" 
                style="width: 100%" placeholder="e.g., c8d231cb0f0e375f637ad316dc6707bd">
     </p>
     <p>
-        <label for="printer_api_key">API Key:</label>
+        <label for="printer_api_key">Clave API:</label>
         <input type="password" id="printer_api_key" name="printer_api_key" 
                value="<?php echo esc_attr($api_key); ?>" 
-               style="width: 100%" placeholder="Enter API key">
-        <button type="button" id="toggle_api_key" class="button button-secondary" style="margin-top: 5px;">Show/Hide Key</button>
+               style="width: 100%" placeholder="Ingrese la clave API">
+        <button type="button" id="toggle_api_key" class="button button-secondary" style="margin-top: 5px;">Mostrar/Ocultar clave</button>
     </p>
     <hr>
     <div class="printer-actions">
-        <button type="button" id="test_credentials" class="button button-primary" style="margin-right: 10px;">Test Credentials</button>
-        <button type="button" id="register_app" class="button button-secondary">Register Application</button>
+        <button type="button" id="test_credentials" class="button button-primary" style="margin-right: 10px;">Probar credenciales</button>
+        <button type="button" id="register_app" class="button button-secondary">Registrar aplicación</button>
         <div id="test_result" style="margin-top: 10px; padding: 10px; display: none;"></div>
     </div>
 
@@ -2334,13 +2334,13 @@ function render_printer_settings_meta_box($post) {
             var resultDiv = $('#test_result');
             
             if (!ip || !printerId || !apiKey) {
-                resultDiv.html('❌ Printer IP, ID and API Key are all required')
+                resultDiv.html('❌ Dirección IP, ID y clave API de la impresora son requeridos')
                         .css('background-color', '#ffe6e6')
                         .show();
                 return;
             }
             
-            resultDiv.html('Testing connection...').css('background-color', '#f8f9fa').show();
+            resultDiv.html('Probando conexión...').css('background-color', '#f8f9fa').show();
             
             $.ajax({
                 url: ajaxurl,
@@ -2375,7 +2375,7 @@ function render_printer_settings_meta_box($post) {
                     }
                 },
                 error: function() {
-                    resultDiv.html('❌ Connection test failed. Please check your settings.')
+                    resultDiv.html('❌ Falló la prueba de conexión. Por favor, verifique su configuración.')
                             .css('background-color', '#ffe6e6');
                 }
             });
@@ -2387,7 +2387,7 @@ function render_printer_settings_meta_box($post) {
             var ip = $('#printer_ip').val();
             var resultDiv = $('#test_result');
             
-            resultDiv.html('Registering application...').css('background-color', '#f8f9fa').show();
+            resultDiv.html('Registrando aplicación...').css('background-color', '#f8f9fa').show();
             
             $.ajax({
                 url: ajaxurl,
@@ -2399,7 +2399,7 @@ function render_printer_settings_meta_box($post) {
                 },
                 success: function(response) {
                     if(response.success) {
-                        resultDiv.html('✅ Registration successful. ID and key received.')
+                        resultDiv.html('✅ Registro exitoso. ID y clave recibidos.')
                                 .css('background-color', '#e6ffe6');
                         
                         if(response.data.id && response.data.key) {
@@ -2407,12 +2407,12 @@ function render_printer_settings_meta_box($post) {
                             $('#printer_api_key').val(response.data.key);
                         }
                     } else {
-                        resultDiv.html('❌ Registration failed: ' + response.data.message)
+                        resultDiv.html('❌ Falló el registro: ' + response.data.message)
                                 .css('background-color', '#ffe6e6');
                     }
                 },
                 error: function() {
-                    resultDiv.html('❌ Registration failed. Please check your printer IP address.')
+                    resultDiv.html('❌ Falló el registro. Por favor, verifique la dirección IP de su impresora.')
                             .css('background-color', '#ffe6e6');
                 }
             });
@@ -2558,28 +2558,26 @@ function send_pending_submissions_notification() {
 
     // Prepare email content
     $subject = sprintf(
-        '%d 3D print %s wachten op review',
-        $pending_count,
-        $pending_count === 1 ? 'aanvraag' : 'aanvragen'
+        '%d solicitud(es) de impresión 3D esperando revisión',
+        $pending_count
     );
     
     $site_url = get_site_url();
     $admin_url = admin_url('edit.php?post_type=3d_submission&approval_status=inbehandeling');
     
-    $message = '<p>Beste beheerder,</p>';
-    $message .= '<p>Er ' . ($pending_count === 1 ? 'is' : 'zijn') . ' momenteel <strong>' . $pending_count . '</strong> ';
-    $message .= '3D print ' . ($pending_count === 1 ? 'aanvraag' : 'aanvragen') . ' die op review ';
-    $message .= ($pending_count === 1 ? 'wacht' : 'wachten') . '.</p>';
+    $message = '<p>Estimado administrador,</p>';
+    $message .= '<p>Actualmente hay <strong>' . $pending_count . '</strong> ';
+    $message .= 'solicitud(es) de impresión 3D esperando revisión.</p>';
     
-    $message .= '<p><a href="' . esc_url($admin_url) . '">Bekijk de wachtende aanvragen</a></p>';
+    $message .= '<p><a href="' . esc_url($admin_url) . '">Ver las solicitudes pendientes</a></p>';
     
     $message .= '<hr>';
-    $message .= '<p><small>Dit is een automatische melding van de 3D Print Service op ' . get_bloginfo('name') . '</small></p>';
+    $message .= '<p><small>Este es un mensaje automático del Servicio de Impresión 3D en ' . get_bloginfo('name') . '</small></p>';
     
     // Send email
     $headers = [
         'Content-Type: text/html; charset=UTF-8',
-        'From: 3D Print Service <no-reply@' . parse_url($site_url, PHP_URL_HOST) . '>'
+        'From: Servicio de Impresión 3D <no-reply@' . parse_url($site_url, PHP_URL_HOST) . '>'
     ];
     
     wp_mail($admin_emails, $subject, $message, $headers);
