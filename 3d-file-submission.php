@@ -8,12 +8,12 @@ Author: Kevin, Milos en Kasper
 
 defined('ABSPATH') or die('feinfeinfein');
 
-function register_custom_post_types() {
+ffunction register_custom_post_types() {
     register_post_type('3d_submission',
         array(
             'labels'      => array(
-                'name'          => __('3D-inzendingen'),
-                'singular_name' => __('3D-inzending'),
+                'name'          => __('Envíos 3D'),
+                'singular_name' => __('Envío 3D'),
             ),
             'public'      => true,
             'show_ui'     => true,
@@ -29,8 +29,8 @@ function register_custom_post_types() {
     register_post_type('printer',
         array(
             'labels' => array(
-                'name' => __('Printers'),
-                'singular_name' => __('Printer')
+                'name' => __('Impresoras'),
+                'singular_name' => __('Impresora')
             ),
             'public' => true,
             'show_ui' => true,
@@ -40,6 +40,7 @@ function register_custom_post_types() {
     );
 }
 add_action('init', 'register_custom_post_types');
+
 
 function add_meta_boxes() {
     $post_type = '3d_submission';
