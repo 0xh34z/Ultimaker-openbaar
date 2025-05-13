@@ -48,25 +48,25 @@ function add_meta_boxes() {
 
     add_meta_box(
         'approval_status',
-        'Behandeling Status',
+        'Estado de revisión',
         'render_approval_meta_box',
         $post_type,
         'side',
         'high'
     );
     
-    
     add_meta_box(
         'file_preview',
-        '3D Bestand Preview',
+        'Vista previa del archivo 3D',
         'render_file_preview_meta_box',
         '3d_submission',
         'normal',
         'high'
     );
+    
     add_meta_box(
         'extra_info',
-        'Extra Info',
+        'Información adicional',
         'render_extra_info_meta_box', 
         '3d_submission',
         'side',
@@ -75,7 +75,7 @@ function add_meta_boxes() {
 
     add_meta_box(
         'printer_settings',
-        'Printer Configuration',
+        'Configuración de impresora',
         'render_printer_settings_meta_box',
         'printer',
         'normal',
@@ -84,8 +84,214 @@ function add_meta_boxes() {
 }
 add_action('add_meta_boxes', 'add_meta_boxes');
 
+
 function render_extra_info_meta_box($post) {
     $fields = [
+        'klas_opleiding' => 'Clase/Programa',
+        'Motief' => 'Motivo',
+        'toelichting' => 'Explicación',
+        'gcode_material' => 'Material (del G-code)',
+        'gcode_color' => 'Color (del G-code)'
+    ];
+
+    // Enlaces de descarga
+    $model_url = get_post_meta($post->ID, '3d_file_url', true);
+    $gcode_url = get_post_meta($post->ID, 'gcode_file_url', true);
+
+    if ($model_url) {
+        echo '<p><strong>Archivo 3D:</strong><br>';
+        echo '<a href="' . esc_url($model_url) . '" download class="button button-small">Descargar archivo 3D</a></p>';
+    }
+
+    if ($gcode_url) {
+        echo '<p><strong>Archivo G-code:</strong><br>';
+        echo '<a href="' . esc_url($gcode_url) . '" download class="button button-small">Descargar G-code</a></p>';
+    }
+
+    foreach ($fields as $meta_key => $label) {
+        $value = get_post_meta($post->ID, $meta_key, true);
+        if(!empty($value)) {
+            echo '<p><strong>' . esc_html($label) . ':</strong><br>' . esc_html($value) . '</p>';
+        }
+    }
+
+    // Información de material
+    $material_names = get_post_meta($post->ID, 'material_names', true);
+    $material_guids = get_post_meta($post->ID, 'material_guids', true);
+    
+    if (!empty($material_names)) {
+        echo '<p><strong>Material (Impresora):</strong><br>';
+        foreach ($material_names as $material_name) {
+            echo esc_html($material_name) . '<br>';
+        }
+        echo '</p>';
+    } elseif (!empty($material_guids)) {
+        echo '<p><strong>GUIDs de material:</strong><br>';
+        foreach ($material_guids as $guid) {
+            echo esc_html($guid) . '<br>';
+        }
+        echo '</p>';
+    }
+
+    echo '<div class="gcode-info-section">';
+    
+    // Tiempo estimado de impresión
+    $estimated_time = get_post_meta($post->ID, 'estimated_time', true);
+    if ($estimated_time) {
+        $hours = floor($estimated_time / 3600);
+        $minutes = floor(($estimated_time % 3600) / 60);
+        $time_str = ($hours > 0 ? $hours . ' horas ' : '') . $minutes . ' minutos';
+        echo '<p><strong>Tiempo estimado de impresión:</strong><br>' . esc_html($time_str) . '</p>';
+    }
+    
+    // Parámetros adicionales del G-code
+    $gcode_url = get_post_meta($post->ID, 'gcode_file_url', true);
+    if ($gcode_url) {
+        $upload_dir = wp_upload_dir();
+        $file_path = str_replace($upload_dir['baseurl'], $upload_dir['basedir'], $gcode_url);
+        
+        if (file_exists($file_path)) {
+            // Leer las primeras 200 líneas del archivo G-code
+            $lines = file($file_path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES, null);
+            $lines = array_slice($lines, 0, 200);
+            
+            $gcode_params = [
+                'printcore' => ['pattern' => '/;Extruder (?:Brandname|Type): ([a-zA-Z]{2} [0-9][,.][0-9])/', 'label' => 'Tipo de Printcore'],
+                'printcore_alt' => ['pattern' => '/;PRINTCORE_ID:([a-zA-Z]{2} ?[0-9][,.][0-9])/', 'label' => 'Tipo de Printcore'],
+                'nozzle_name' => ['pattern' => '/;EXTRUDER_TRAIN\.0\.NOZZLE\.NAME:([a-zA-Z]{2} [0-9][,.][0-9])/', 'label' => 'Tipo de Printcore'],
+                'nozzle_size' => ['pattern' => '/;Nozzle diameter: ?([0-9][,.][0-9]+)/', 'label' => 'Diámetro de boquilla'],
+                'nozzle_size_alt' => ['pattern' => '/;EXTRUDER_TRAIN\.0\.NOZZLE\.DIAMETER:([0-9][,.][0-9]+)/', 'label' => 'Diámetro de boquilla'],
+                'layer_height' => ['pattern' => '/;Layer height: ([0-9.]+)/', 'label' => 'Altura de capa'],
+                'layer_height_alt' => ['pattern' => '/;LAYER_HEIGHT:([0-9.]+)/', 'label' => 'Altura de capa'],
+                'infill' => ['pattern' => '/;Infill: ([0-9.]+)%/', 'label' => 'Porcentaje de relleno'],
+                'infill_alt' => ['pattern' => '/;INFILL_SPARSE_DENSITY:([0-9.]+)/', 'label' => 'Porcentaje de relleno'],
+                'print_temp' => ['pattern' => '/;Print temperature: ([0-9.]+)/', 'label' => 'Temperatura de impresión'],
+                'print_temp_alt' => ['pattern' => '/;EXTRUDER_TRAIN\.0\.INITIAL_TEMPERATURE:([0-9.]+)/', 'label' => 'Temperatura de impresión'],
+                'bed_temp' => ['pattern' => '/;Bed temperature: ([0-9.]+)/', 'label' => 'Temperatura de la cama'],
+                'bed_temp_alt' => ['pattern' => '/;BUILD_PLATE\.TEMPERATURE:([0-9.]+)/', 'label' => 'Temperatura de la cama'],
+                'print_speed' => ['pattern' => '/;Print speed: ([0-9.]+)/', 'label' => 'Velocidad de impresión'],
+                'retraction' => ['pattern' => '/;Retraction: ([0-9.]+)/', 'label' => 'Retracción'],
+                'dimensions' => ['pattern' => '/;MINX:([0-9.-]+) MAXX:([0-9.-]+) MINY:([0-9.-]+) MAXY:([0-9.-]+) MINZ:([0-9.-]+) MAXZ:([0-9.-]+)/', 'label' => 'Dimensiones'],
+                'filament_used' => ['pattern' => '/;Filament used: ([0-9.]+)m/', 'label' => 'Filamento usado'],
+                'filament_used_alt' => ['pattern' => '/;FILAMENT_USED:([0-9.]+)/', 'label' => 'Filamento usado'],
+                'num_layers' => ['pattern' => '/;LAYER_COUNT:([0-9]+)/', 'label' => 'Número de capas']
+            ];
+            
+            $content = implode("\n", $lines);
+            $processed_labels = array();
+            
+            // Buscar información de printcore
+            $printcore_found = false;
+            foreach (['printcore', 'printcore_alt', 'nozzle_name'] as $key) {
+                if (preg_match($gcode_params[$key]['pattern'], $content, $matches)) {
+                    echo '<p><strong>' . esc_html($gcode_params[$key]['label']) . ':</strong><br>' . esc_html($matches[1]) . '</p>';
+                    $printcore_found = true;
+                    $processed_labels[] = $gcode_params[$key]['label'];
+                    break;
+                }
+            }
+            
+            // Si no se encuentra printcore, buscar tamaño de boquilla
+            if (!$printcore_found) {
+                $nozzle_size = null;
+                foreach (['nozzle_size', 'nozzle_size_alt'] as $key) {
+                    if (preg_match($gcode_params[$key]['pattern'], $content, $matches)) {
+                        $nozzle_size = str_replace(',', '.', $matches[1]);
+                        echo '<p><strong>' . esc_html($gcode_params[$key]['label']) . ':</strong><br>' . esc_html($nozzle_size) . ' mm</p>';
+                        $processed_labels[] = $gcode_params[$key]['label'];
+                        
+                        // Inferir tipo de printcore basado en diámetro
+                        if ($nozzle_size == '0.4') {
+                            echo '<p><strong>Tipo de Printcore (inferido):</strong><br>AA 0.4</p>';
+                        } elseif ($nozzle_size == '0.8') {
+                            echo '<p><strong>Tipo de Printcore (inferido):</strong><br>BB 0.8</p>';
+                        } elseif ($nozzle_size == '0.25') {
+                            echo '<p><strong>Tipo de Printcore (inferido):</strong><br>AA 0.25</p>';
+                        }
+                        break;
+                    }
+                }
+            }
+            
+            // Verificar printcore ingresado manualmente
+            $printcore_meta = get_post_meta($post->ID, 'Printcore', true);
+            if (!empty($printcore_meta) && !$printcore_found) {
+                echo '<p><strong>Printcore:</strong><br>' . esc_html($printcore_meta) . '</p>';
+            }
+            
+            // Procesar otros parámetros del G-code
+            foreach ($gcode_params as $key => $param) {
+                // Saltar parámetros relacionados con printcore y etiquetas ya procesadas
+                if (in_array($key, ['printcore', 'printcore_alt', 'nozzle_name', 'nozzle_size', 'nozzle_size_alt']) || 
+                    in_array($param['label'], $processed_labels)) {
+                    continue;
+                }
+                
+                if (strpos($key, '_alt') !== false) {
+                    $base_key = str_replace('_alt', '', $key);
+                    if (in_array($gcode_params[$base_key]['label'], $processed_labels)) {
+                        continue;
+                    }
+                }
+                
+                if (preg_match($param['pattern'], $content, $matches)) {
+                    if ($key === 'dimensions' && count($matches) >= 7) {
+                        $width = number_format(abs($matches[2] - $matches[1]), 1);
+                        $depth = number_format(abs($matches[4] - $matches[3]), 1);
+                        $height = number_format(abs($matches[6] - $matches[5]), 1);
+                        echo '<p><strong>' . esc_html($param['label']) . ':</strong><br>' . 
+                             esc_html($width . ' x ' . $depth . ' x ' . $height . ' mm') . '</p>';
+                    } else {
+                        $unit = '';
+                        switch ($key) {
+                            case 'layer_height': case 'layer_height_alt': $unit = ' mm'; break;
+                            case 'infill': case 'infill_alt': $unit = '%'; break;
+                            case 'print_temp': case 'print_temp_alt': 
+                            case 'bed_temp': case 'bed_temp_alt': $unit = '°C'; break;
+                            case 'print_speed': $unit = ' mm/s'; break;
+                            case 'filament_used': case 'filament_used_alt': $unit = ' m'; break;
+                        }
+                        echo '<p><strong>' . esc_html($param['label']) . ':</strong><br>' . 
+                             esc_html($matches[1] . $unit) . '</p>';
+                        
+                        $processed_labels[] = $param['label'];
+                    }
+                }
+            }
+            
+            // Información del slicer (Cura, Prusa Slicer, etc.)
+            $slicer_info = '';
+            if (preg_match('/;Generated with (Cura|PrusaSlicer|Slic3r|Simplify3D) ([0-9.]+)/', $content, $matches)) {
+                $slicer_info = $matches[1] . ' ' . $matches[2];
+                echo '<p><strong>Software de slicer:</strong><br>' . esc_html($slicer_info) . '</p>';
+            } elseif (preg_match('/;GENERATOR.NAME:([^;]+)/', $content, $matches)) {
+                echo '<p><strong>Software de slicer:</strong><br>' . esc_html(trim($matches[1])) . '</p>';
+            }
+        }
+    }
+    
+    echo '</div>';
+
+    $author_id = $post->post_author;
+    $user = get_userdata($author_id);
+    $submitter_name = $user ? $user->display_name : 'Desconocido';
+    $submitter_email = get_post_meta($post->ID, 'submitter_email', true);
+
+    if (empty($submitter_email)) {
+        $submitter_email = $user ? $user->user_email : 'Desconocido';
+    }
+
+    echo '<p><strong>Nombre del remitente:</strong><br>' . esc_html($submitter_name) . '</p>';
+    echo '<p><strong>Email del remitente:</strong><br>' . esc_html($submitter_email) . '</p>';
+
+    $printer_id = get_post_meta($post->ID, 'selected_printer', true);
+    $printer_name = 'No se seleccionó impresora';
+    if ($printer_id) {
+        $printer_post = get_post($printer_id);
+        $printer_name = $printer_post ? $printer_post->post_title : '(impresora eliminada)';
+    }
+    echo '<p><strong>Impresora seleccionada:</strong><br>' . esc_html($printer_name) . '</p>';
+}    $fields = [
         'klas_opleiding' => 'Klas/Opleiding',
         'Motief' => 'Motief',
         'toelichting' => 'Toelichting',
@@ -365,50 +571,72 @@ function get_material_name_from_guid($guid) {
 }
 
 function render_approval_meta_box($post) {
+    // Obtener metadatos del post
     $status = get_post_meta($post->ID, 'approval_status', true) ?: 'inbehandeling';
     $rejection_reason = get_post_meta($post->ID, 'rejection_reason', true);
     $failure_reason = get_post_meta($post->ID, 'failure_reason', true);
     ?>
+
     <div class="approval-status-container">
-        <label for="approval_status">Behandeling Status:</label>
+        <label for="approval_status"><strong>Estado de revisión:</strong></label>
         <select name="approval_status" id="approval_status" style="width:100%; margin-bottom:15px;">
-            <option value="inbehandeling" <?php selected($status, 'inbehandeling'); ?>>In behandeling</option>
-            <option value="goedgekeurd" <?php selected($status, 'goedgekeurd'); ?>>Goedgekeurd</option>
-            <option value="afgewezen" <?php selected($status, 'afgewezen'); ?>>Afgewezen</option>
-            <option value="geslaagd" <?php selected($status, 'geslaagd'); ?>>Geslaagd</option>
-            <option value="gefaald" <?php selected($status, 'gefaald'); ?>>Gefaald</option>
+            <option value="inbehandeling" <?php selected($status, 'inbehandeling'); ?>>En revisión</option>
+            <option value="goedgekeurd" <?php selected($status, 'goedgekeurd'); ?>>Aprobado</option>
+            <option value="afgewezen" <?php selected($status, 'afgewezen'); ?>>Rechazado</option>
+            <option value="geslaagd" <?php selected($status, 'geslaagd'); ?>>Completado</option>
+            <option value="gefaald" <?php selected($status, 'gefaald'); ?>>Fallido</option>
         </select>
 
-        <div id="rejection_reason_container" style="margin-top:10px;">
-            <label for="rejection_reason">Reden voor afwijzing:</label>
-            <textarea name="rejection_reason" id="rejection_reason" 
-                      rows="4" style="width:100%;" 
-                      placeholder="Geef een gedetailleerde reden voor afwijzing..."><?php 
-                      echo esc_textarea($rejection_reason); ?></textarea>
+        <div id="rejection_reason_container" style="margin-top:10px; <?php echo ($status !== 'afgewezen') ? 'display:none;' : ''; ?>">
+            <label for="rejection_reason"><strong>Razón de rechazo:</strong></label>
+            <textarea name="rejection_reason" id="rejection_reason"
+                      rows="4" style="width:100%;"
+                      placeholder="Proporcione una razón detallada para el rechazo..."><?php
+                echo esc_textarea($rejection_reason); ?></textarea>
         </div>
 
-        <div id="failure_reason_container" style="margin-top:10px;">
-            <label for="failure_reason">Reden voor mislukking:</label>
-            <textarea name="failure_reason" id="failure_reason" 
-                      rows="4" style="width:100%;" 
-                      placeholder="Beschrijf wat er misging tijdens het printen..."><?php 
-                      echo esc_textarea($failure_reason); ?></textarea>
+        <div id="failure_reason_container" style="margin-top:10px; <?php echo ($status !== 'gefaald') ? 'display:none;' : ''; ?>">
+            <label for="failure_reason"><strong>Razón del fallo:</strong></label>
+            <textarea name="failure_reason" id="failure_reason"
+                      rows="4" style="width:100%;"
+                      placeholder="Describa qué salió mal durante la impresión..."><?php
+                echo esc_textarea($failure_reason); ?></textarea>
         </div>
 
         <?php wp_nonce_field('approval_meta_box', 'approval_meta_box_nonce'); ?>
 
         <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #ddd;">
             <?php submit_button(
-                __('Update Status'), 
-                'primary large', 
-                'save', 
-                false, 
+                __('Actualizar estado'),
+                'primary large',
+                'save',
+                false,
                 array('style' => 'width: 100%;')
             ); ?>
         </div>
     </div>
+
+    <script>
+    // Mostrar u ocultar campos según el estado
+    (function() {
+        const statusSelect = document.getElementById('approval_status');
+        const rejectionContainer = document.getElementById('rejection_reason_container');
+        const failureContainer = document.getElementById('failure_reason_container');
+
+        function toggleFields() {
+            const value = statusSelect.value;
+            rejectionContainer.style.display = (value === 'afgewezen') ? 'block' : 'none';
+            failureContainer.style.display = (value === 'gefaald') ? 'block' : 'none';
+        }
+
+        statusSelect.addEventListener('change', toggleFields);
+        document.addEventListener('DOMContentLoaded', toggleFields); // inicializa en carga
+    })();
+    </script>
+
     <?php
 }
+
 
 
 function render_file_preview_meta_box($post) {
